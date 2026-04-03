@@ -123,7 +123,7 @@ let parameters = NWParameters.udp
 
 let relayHop = ProxyConfiguration.RelayHop(
     http3RelayEndpoint: .url(proxyUrl),
-    additionalHTTPHeaderFields: ["proxy-authorization": "your-secret-token"]
+    additionalHTTPHeaderFields: ["proxy-authorization": "Bearer your-secret-token"]
 )
 let proxyConfig = ProxyConfiguration(relayHops: [relayHop])
 let privacyContext = NWParameters.PrivacyContext(description: "MASQUE proxy")
