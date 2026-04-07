@@ -89,6 +89,17 @@ struct Session {
     /// RFC 9298 §3.2: the session lifetime is tied to the stream — dropping
     /// it sends FIN which terminates the session from the client's perspective.
     _stream: h3::server::RequestStream<h3_quinn::BidiStream<Bytes>, Bytes>,
+    /// Abort handle for the spawned target reader task. UDP recv() never
+    /// returns on its own when the client goes away, so we must explicitly
+    /// abort the reader on session drop — otherwise the task keeps the
+    /// Arc<UdpSocket> alive and leaks an fd per stale session.
+    reader: tokio::task::AbortHandle,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.reader.abort();
+    }
 }
 
 async fn handle_connection(
@@ -273,28 +284,22 @@ async fn handle_request(
     let quic_stream_id = h3_index * 4; // Reconstruct raw QUIC stream ID
     let target = Arc::new(target);
 
-    // Store the session — importantly, this moves `stream` into the Session struct
-    // so it stays alive for the duration of the CONNECT-UDP session.
-    sessions.insert(
-        quic_stream_id,
-        Session {
-            target: target.clone(),
-            _stream: stream,
-        },
-    );
-
     log::info!(
         "[server] CONNECT-UDP established: h3_index={h3_index} quic_stream_id={quic_stream_id} target={target_addr}"
     );
 
     // Spawn target reader — when the target socket errors or the target_tx is
     // dropped (connection closing), this task exits and sends a cleanup signal.
+    // The task is also force-aborted via Session::drop when the session is
+    // removed, since UDP recv() will otherwise block forever after the client
+    // disconnects and leak the fd.
     let tx = target_tx.clone();
     let cleanup = cleanup_tx.clone();
-    tokio::spawn(async move {
+    let reader_target = target.clone();
+    let handle = tokio::spawn(async move {
         let mut buf = vec![0u8; 65535];
         loop {
-            match target.recv(&mut buf).await {
+            match reader_target.recv(&mut buf).await {
                 Ok(len) => {
                     let data = TargetPayload {
                         stream_id: quic_stream_id,
@@ -312,6 +317,17 @@ async fn handle_request(
         }
         let _ = cleanup.send(quic_stream_id).await;
     });
+
+    // Store the session — importantly, this moves `stream` into the Session struct
+    // so it stays alive for the duration of the CONNECT-UDP session.
+    sessions.insert(
+        quic_stream_id,
+        Session {
+            target,
+            _stream: stream,
+            reader: handle.abort_handle(),
+        },
+    );
 }
 
 fn load_certs(
