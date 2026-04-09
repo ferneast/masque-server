@@ -10,7 +10,6 @@ Tunnels UDP traffic through HTTP/3 (QUIC) DATAGRAM frames on port 443, making it
 
 MASQUE CONNECT-UDP (RFC 9298) solves exactly this: it carries UDP datagrams natively over HTTP/3 / QUIC, the same protocol stack used by Apple iCloud Private Relay and Cloudflare WARP. We built this server (and a thin reference client) so any Xlarva user — or anyone else who wants a self-hosted, RFC-standard alternative to closed proxy services — can stand up their own relay in minutes.
 
-If you're looking for a Xlarva-compatible WireGuard client that speaks this protocol out of the box, see <https://xlarva.app/>.
 
 ## Features
 
