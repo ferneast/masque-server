@@ -1,0 +1,36 @@
+services:
+  server:
+    build: .
+    command:
+      - server
+      - --listen
+      - "[::]:443"
+      - --cert
+      - /certs/cert.pem
+      - --key
+      - /certs/key.pem
+      - --auth-token
+      - ${AUTH_TOKEN:-changeme}
+    ports:
+      - "443:443/udp"
+    volumes:
+      - ./certs:/certs:ro
+    restart: unless-stopped
+
+  client:
+    build: .
+    command:
+      - client
+      - --listen
+      - "0.0.0.0:51820"
+      - --proxy-url
+      - ${PROXY_URL:?PROXY_URL is required}
+      - --target
+      - ${TARGET:?TARGET is required}
+      - --auth-token
+      - ${AUTH_TOKEN:-changeme}
+    ports:
+      - "51820:51820/udp"
+    restart: unless-stopped
+    profiles:
+      - client

@@ -1,0 +1,7 @@
+# Used by CI to package pre-built static binaries into a multi-arch image.
+# For local builds, use the regular Dockerfile instead.
+FROM scratch
+ARG TARGETARCH
+COPY build/linux/${TARGETARCH}/masque-tunnel /masque-tunnel
+EXPOSE 443/udp
+ENTRYPOINT ["/masque-tunnel"]
