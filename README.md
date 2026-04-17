@@ -1,6 +1,6 @@
 # masque-tunnel
 
-A high-performance MASQUE CONNECT-UDP (RFC 9298) tunnel — both client and server in a single binary.
+A high-performance MASQUE CONNECT-UDP ([RFC 9298](https://datatracker.ietf.org/doc/html/rfc9298)) tunnel — both client and server in a single binary.
 
 Tunnels UDP traffic through HTTP/3 (QUIC) DATAGRAM frames on port 443, making it indistinguishable from normal HTTPS traffic. Designed for use as a VPN obfuscation layer (e.g., tunneling WireGuard).
 
@@ -8,12 +8,12 @@ Tunnels UDP traffic through HTTP/3 (QUIC) DATAGRAM frames on port 443, making it
 
 `masque-tunnel` was extracted from [Xlarva](https://xlarva.app/), a multi-platform WireGuard client for iOS, macOS, and tvOS. While building Xlarva's obfuscation features, we needed an RFC-compliant way to wrap WireGuard's UDP traffic inside an encrypted, indistinguishable-from-HTTPS transport. The popular [`wstunnel`](https://github.com/erebe/wstunnel) project covers TCP-style encapsulation over WebSockets, but it doesn't preserve UDP semantics — turning a UDP-only protocol like WireGuard into a TCP-over-TCP nightmare on lossy networks.
 
-MASQUE CONNECT-UDP (RFC 9298) solves exactly this: it carries UDP datagrams natively over HTTP/3 / QUIC, the same protocol stack used by Apple iCloud Private Relay and Cloudflare WARP. We built this server (and a thin reference client) so any Xlarva user — or anyone else who wants a self-hosted, RFC-standard alternative to closed proxy services — can stand up their own relay in minutes.
+MASQUE CONNECT-UDP ([RFC 9298](https://datatracker.ietf.org/doc/html/rfc9298)) solves exactly this: it carries UDP datagrams natively over HTTP/3 / QUIC, the same protocol stack used by Apple iCloud Private Relay and Cloudflare WARP. We built this server (and a thin reference client) so any Xlarva user — or anyone else who wants a self-hosted, RFC-standard alternative to closed proxy services — can stand up their own relay in minutes.
 
 
 ## Features
 
-- **RFC 9298 compliant** — CONNECT-UDP over HTTP/3 with QUIC DATAGRAM frames
+- **[RFC 9298](https://datatracker.ietf.org/doc/html/rfc9298) compliant** — CONNECT-UDP over HTTP/3 with QUIC DATAGRAM frames
 - **Client + Server** — single binary with `client` / `server` subcommands
 - **High throughput** — BBR2 congestion control, batched I/O, zero-copy forwarding
 - **Obfuscation** — traffic appears as standard HTTPS/QUIC on port 443
