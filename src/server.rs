@@ -77,11 +77,6 @@ pub async fn run(config: ServerConfig) -> Result<(), Box<dyn std::error::Error +
     Ok(())
 }
 
-struct TargetPayload {
-    stream_id: u64,
-    payload: Vec<u8>,
-}
-
 /// Per-session state: keeps the CONNECT-UDP stream alive and tracks the target socket.
 struct Session {
     target: Arc<UdpSocket>,
@@ -120,7 +115,6 @@ async fn handle_connection(
     };
 
     let mut sessions: HashMap<u64, Session> = HashMap::new();
-    let (target_tx, mut target_rx) = mpsc::channel::<TargetPayload>(1024);
     let (cleanup_tx, mut cleanup_rx) = mpsc::channel::<u64>(64);
 
     loop {
@@ -133,7 +127,7 @@ async fn handle_connection(
                             Ok((req, stream)) => {
                                 handle_request(
                                     req, stream, &mut sessions, &auth_token,
-                                    &target_tx, &cleanup_tx,
+                                    &dgram_conn, &cleanup_tx,
                                 ).await;
                             }
                             Err(e) => log::error!("[server] Request resolve error: {e}"),
@@ -153,14 +147,9 @@ async fn handle_connection(
                     if let Some(session) = sessions.get(&stream_id) {
                         let _ = session.target.try_send(payload);
                     } else {
-                        log::warn!("[server] No session for stream_id={stream_id}, known: {:?}", sessions.keys().collect::<Vec<_>>());
+                        log::trace!("[server] No session for stream_id={stream_id}");
                     }
                 }
-            }
-            // Target -> client: encode and send DATAGRAM
-            Some(tp) = target_rx.recv() => {
-                let dgram = encode_datagram(tp.stream_id, &tp.payload);
-                let _ = dgram_conn.send_datagram(Bytes::from(dgram));
             }
             // Session cleanup: remove closed sessions
             Some(stream_id) = cleanup_rx.recv() => {
@@ -184,7 +173,7 @@ async fn handle_request(
     mut stream: h3::server::RequestStream<h3_quinn::BidiStream<Bytes>, Bytes>,
     sessions: &mut HashMap<u64, Session>,
     auth_token: &Option<String>,
-    target_tx: &mpsc::Sender<TargetPayload>,
+    dgram_conn: &quinn::Connection,
     cleanup_tx: &mpsc::Sender<u64>,
 ) {
     let protocol = req.extensions().get::<Protocol>();
@@ -288,24 +277,22 @@ async fn handle_request(
         "[server] CONNECT-UDP established: h3_index={h3_index} quic_stream_id={quic_stream_id} target={target_addr}"
     );
 
-    // Spawn target reader — when the target socket errors or the target_tx is
-    // dropped (connection closing), this task exits and sends a cleanup signal.
-    // The task is also force-aborted via Session::drop when the session is
-    // removed, since UDP recv() will otherwise block forever after the client
-    // disconnects and leak the fd.
-    let tx = target_tx.clone();
+    // Spawn target reader — encodes and sends DATAGRAMs directly on the QUIC
+    // connection, bypassing any per-connection channel. quinn::Connection is
+    // cheaply cloneable and send_datagram is internally synchronized, so each
+    // session's reader writes out concurrently. On send failure (connection
+    // closed) or recv error, the task exits and signals cleanup. The task is
+    // also force-aborted via Session::drop when the session is removed.
+    let conn_for_reader = dgram_conn.clone();
     let cleanup = cleanup_tx.clone();
     let reader_target = target.clone();
     let handle = tokio::spawn(async move {
-        let mut buf = vec![0u8; 65535];
+        let mut buf = [0u8; 2048];
         loop {
             match reader_target.recv(&mut buf).await {
                 Ok(len) => {
-                    let data = TargetPayload {
-                        stream_id: quic_stream_id,
-                        payload: buf[..len].to_vec(),
-                    };
-                    if tx.send(data).await.is_err() {
+                    let dgram = encode_datagram(quic_stream_id, &buf[..len]);
+                    if conn_for_reader.send_datagram(dgram).is_err() {
                         break;
                     }
                 }
