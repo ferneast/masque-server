@@ -1,16 +1,18 @@
+use bytes::{BufMut, Bytes, BytesMut};
+
 /// Well-known URI prefix for CONNECT-UDP (RFC 9298).
 pub const CONNECT_UDP_PATH: &str = "/.well-known/masque/udp";
 
-/// Encode a u64 as a QUIC variable-length integer (RFC 9000, Section 16).
-pub fn encode_varint(value: u64) -> Vec<u8> {
+/// Append a QUIC variable-length integer (RFC 9000, Section 16) to a buffer.
+pub fn put_varint(buf: &mut BytesMut, value: u64) {
     if value < 64 {
-        vec![value as u8]
+        buf.put_u8(value as u8);
     } else if value < 16384 {
-        ((value as u16) | 0x4000).to_be_bytes().to_vec()
+        buf.put_u16((value as u16) | 0x4000);
     } else if value < 1_073_741_824 {
-        ((value as u32) | 0x80000000).to_be_bytes().to_vec()
+        buf.put_u32((value as u32) | 0x80000000);
     } else {
-        (value | 0xC000000000000000).to_be_bytes().to_vec()
+        buf.put_u64(value | 0xC000000000000000);
     }
 }
 
@@ -50,13 +52,14 @@ pub fn decode_varint(buf: &[u8]) -> Option<(u64, usize)> {
 }
 
 /// Encode a DATAGRAM payload with Quarter Stream ID and Context ID = 0.
-pub fn encode_datagram(stream_id: u64, payload: &[u8]) -> Vec<u8> {
-    let qsid = encode_varint(stream_id / 4);
-    let mut buf = Vec::with_capacity(qsid.len() + 1 + payload.len());
-    buf.extend_from_slice(&qsid);
-    buf.push(0x00); // Context ID = 0
-    buf.extend_from_slice(payload);
-    buf
+/// Returns Bytes via BytesMut::freeze (single allocation, O(1) handoff).
+pub fn encode_datagram(stream_id: u64, payload: &[u8]) -> Bytes {
+    // QSID varint is at most 8 bytes; context id is 1 byte; rest is payload.
+    let mut buf = BytesMut::with_capacity(9 + payload.len());
+    put_varint(&mut buf, stream_id / 4);
+    buf.put_u8(0x00); // Context ID = 0
+    buf.put_slice(payload);
+    buf.freeze()
 }
 
 /// Decode a DATAGRAM payload. Returns (stream_id, udp_payload).

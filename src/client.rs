@@ -196,15 +196,14 @@ async fn run_tunnel_inner(
 
     // Datagram forwarding loop
     let mut peer_addr: Option<SocketAddr> = None;
-    let mut buf = vec![0u8; 65535];
+    let mut buf = [0u8; 2048];
 
     loop {
         tokio::select! {
             result = local.recv_from(&mut buf) => {
                 let (n, src) = result?;
                 peer_addr = Some(src);
-                let dgram = encode_datagram(quic_stream_id, &buf[..n]);
-                dgram_conn.send_datagram(Bytes::from(dgram))?;
+                dgram_conn.send_datagram(encode_datagram(quic_stream_id, &buf[..n]))?;
             }
             result = dgram_conn.read_datagram() => {
                 let data = result?;
@@ -295,7 +294,7 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        rustls::crypto::ring::default_provider()
+        rustls::crypto::aws_lc_rs::default_provider()
             .signature_verification_algorithms
             .supported_schemes()
     }
