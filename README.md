@@ -96,6 +96,18 @@ sudo certbot certonly --standalone -d your-domain.com
 sudo ufw allow 443/udp
 ```
 
+### Tuning for High Throughput
+
+The kernel UDP socket buffer defaults (`net.core.rmem_max` ≈ 208 KB on most Linux distros) are too small for sustained QUIC traffic and become the first bottleneck above ~100 Mbps. Raise them on **both** endpoints:
+
+```bash
+sudo sysctl -w net.core.rmem_max=67108864 net.core.rmem_default=16777216
+sudo sysctl -w net.core.wmem_max=67108864 net.core.wmem_default=16777216
+# Persist across reboots: drop the same lines into /etc/sysctl.d/99-masque.conf
+```
+
+QUIC starts with an initial MTU of 1350 bytes and grows via PMTUD on stable paths. When tunneling WireGuard, set the WireGuard interface MTU to **1280** so the outer encrypted UDP packet fits inside the QUIC DATAGRAM payload even before PMTUD converges. Oversized datagrams are dropped silently rather than tearing down the tunnel, but lowering the WireGuard MTU avoids the loss entirely.
+
 ### systemd Service
 
 ```ini
