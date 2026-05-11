@@ -204,7 +204,13 @@ async fn run_tunnel_inner(
             result = local.recv_from(&mut buf) => {
                 let (n, src) = result?;
                 peer_addr = Some(src);
-                dgram_conn.send_datagram(encode_datagram(quic_stream_id, &buf[..n]))?;
+                match dgram_conn.send_datagram(encode_datagram(quic_stream_id, &buf[..n])) {
+                    Ok(()) => {}
+                    Err(quinn::SendDatagramError::TooLarge) => {
+                        log::trace!("[client] drop oversized datagram: {n} bytes");
+                    }
+                    Err(e) => return Err(e.into()),
+                }
             }
             result = dgram_conn.read_datagram() => {
                 let data = result?;

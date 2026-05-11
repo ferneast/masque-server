@@ -293,8 +293,12 @@ async fn handle_request(
             match reader_target.recv(&mut buf).await {
                 Ok(len) => {
                     let dgram = encode_datagram(quic_stream_id, &buf[..len]);
-                    if conn_for_reader.send_datagram(dgram).is_err() {
-                        break;
+                    match conn_for_reader.send_datagram(dgram) {
+                        Ok(()) => {}
+                        Err(quinn::SendDatagramError::TooLarge) => {
+                            log::trace!("[server] drop oversized datagram for stream_id={quic_stream_id}: {len} bytes");
+                        }
+                        Err(_) => break,
                     }
                 }
                 Err(e) => {
