@@ -32,8 +32,9 @@ pub async fn run(config: ServerConfig) -> Result<(), Box<dyn std::error::Error +
     server_crypto.send_half_rtt_data = true;
 
     let mut transport = quinn::TransportConfig::default();
-    transport.datagram_receive_buffer_size(Some(200_000));
-    transport.datagram_send_buffer_size(200_000);
+    transport.initial_mtu(1350);
+    transport.datagram_receive_buffer_size(Some(8_000_000));
+    transport.datagram_send_buffer_size(8_000_000);
     transport.max_idle_timeout(Some(
         std::time::Duration::from_secs(30)
             .try_into()
@@ -292,8 +293,12 @@ async fn handle_request(
             match reader_target.recv(&mut buf).await {
                 Ok(len) => {
                     let dgram = encode_datagram(quic_stream_id, &buf[..len]);
-                    if conn_for_reader.send_datagram(dgram).is_err() {
-                        break;
+                    match conn_for_reader.send_datagram(dgram) {
+                        Ok(()) => {}
+                        Err(quinn::SendDatagramError::TooLarge) => {
+                            log::trace!("[server] drop oversized datagram for stream_id={quic_stream_id}: {len} bytes");
+                        }
+                        Err(_) => break,
                     }
                 }
                 Err(e) => {

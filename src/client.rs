@@ -41,8 +41,9 @@ pub async fn run(config: ClientConfig) -> Result<(), Box<dyn std::error::Error +
     let client_crypto = build_tls_config(&config.ca, config.insecure)?;
 
     let mut transport = quinn::TransportConfig::default();
-    transport.datagram_receive_buffer_size(Some(200_000));
-    transport.datagram_send_buffer_size(200_000);
+    transport.initial_mtu(1350);
+    transport.datagram_receive_buffer_size(Some(8_000_000));
+    transport.datagram_send_buffer_size(8_000_000);
     transport.max_idle_timeout(Some(
         Duration::from_secs(30)
             .try_into()
@@ -203,7 +204,13 @@ async fn run_tunnel_inner(
             result = local.recv_from(&mut buf) => {
                 let (n, src) = result?;
                 peer_addr = Some(src);
-                dgram_conn.send_datagram(encode_datagram(quic_stream_id, &buf[..n]))?;
+                match dgram_conn.send_datagram(encode_datagram(quic_stream_id, &buf[..n])) {
+                    Ok(()) => {}
+                    Err(quinn::SendDatagramError::TooLarge) => {
+                        log::trace!("[client] drop oversized datagram: {n} bytes");
+                    }
+                    Err(e) => return Err(e.into()),
+                }
             }
             result = dgram_conn.read_datagram() => {
                 let data = result?;
