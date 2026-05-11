@@ -32,8 +32,9 @@ pub async fn run(config: ServerConfig) -> Result<(), Box<dyn std::error::Error +
     server_crypto.send_half_rtt_data = true;
 
     let mut transport = quinn::TransportConfig::default();
-    transport.datagram_receive_buffer_size(Some(200_000));
-    transport.datagram_send_buffer_size(200_000);
+    transport.initial_mtu(1350);
+    transport.datagram_receive_buffer_size(Some(8_000_000));
+    transport.datagram_send_buffer_size(8_000_000);
     transport.max_idle_timeout(Some(
         std::time::Duration::from_secs(30)
             .try_into()

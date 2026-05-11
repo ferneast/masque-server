@@ -41,8 +41,9 @@ pub async fn run(config: ClientConfig) -> Result<(), Box<dyn std::error::Error +
     let client_crypto = build_tls_config(&config.ca, config.insecure)?;
 
     let mut transport = quinn::TransportConfig::default();
-    transport.datagram_receive_buffer_size(Some(200_000));
-    transport.datagram_send_buffer_size(200_000);
+    transport.initial_mtu(1350);
+    transport.datagram_receive_buffer_size(Some(8_000_000));
+    transport.datagram_send_buffer_size(8_000_000);
     transport.max_idle_timeout(Some(
         Duration::from_secs(30)
             .try_into()
